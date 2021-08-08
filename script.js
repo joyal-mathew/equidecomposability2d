@@ -1,14 +1,13 @@
 (() => {
 "use strict";
-/* jshint browser: true */
 
 const shapes = [];
 
 const canvas = document.getElementById("display");
 const context = canvas.getContext("2d");
 
-canvas.width = innerWidth; /* jshint ignore: line */
-canvas.height = innerHeight; /* jshint ignore: line */
+canvas.width = innerWidth;
+canvas.height = innerHeight;
 
 let drawing = null;
 let locked = 0;
