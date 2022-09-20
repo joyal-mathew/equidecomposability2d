@@ -6,4 +6,8 @@ Equidecomposability is the theorem that given two polygons of equal area, one ca
 
 ## Usage
 
-Open the html file in a web brower or just go to the [Github Pages deployment](https://joyal-mathew.github.io/equidecomposability2d/). Left click to add vertecies then right click to close the shape.
+- Left click to add a vertice (do this n - 1 times, where n is the number of sides in the desired shape)
+- Right click to close the shape (do this the last time)
+- Make sure you don't left or right click on top of another vertice (the geometry will become corrupted)
+
+Open the html file in a web brower or just go to the [Github Pages deployment](https://joyal-mathew.github.io/equidecomposability2d/) to try it out.
