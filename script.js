@@ -1,5 +1,6 @@
-(() => {
 "use strict";
+
+const POINT_COINDICENT_TOLERENCE = 10;
 
 const shapes = [];
 
@@ -17,7 +18,6 @@ addEventListener("mousedown", e => {
     if (animation) return;
     shapes.splice(0, shapes.length);
 
-
     if (e.button === 0) {
         if (drawing === null) {
             drawing = [ { x: e.clientX, y: e.clientY } ];
@@ -30,10 +30,10 @@ addEventListener("mousedown", e => {
             }
         }
     }
-    else if (e.button === 2) {
+    else if (e.button === 2 && drawing.length > 2) {
         if (drawing !== null && drawingColor !== "red") {
             drawing.push(drawing[0]);
-            if (!selfIntersects()) {
+            if (!selfIntersects(true)) {
                 drawing.pop();
                 shapes.push(drawing);
                 drawing = null;
@@ -59,6 +59,7 @@ addEventListener("mousedown", e => {
         }
     }
 });
+
 addEventListener("mousemove", e => {
     if (drawing !== null) {
         if (drawing.length === locked) {
@@ -72,9 +73,22 @@ addEventListener("mousemove", e => {
     }
 });
 
-function selfIntersects() {
+requestAnimationFrame(drawShapes);
+
+function selfIntersects(allowedCoincidents) {
+    allowedCoincidents = allowedCoincidents || 0;
+
     if (drawing.length < 2) {
         return false;
+    }
+
+    let foundCoincidents = 0;
+
+    for (let i = 0; i < drawing.length; ++i) {
+        for (let j = i + 1; j < drawing.length; ++j) {
+            if (distanceSq(drawing[i], drawing[j]) < 10) foundCoincidents += 1;
+            if (foundCoincidents > allowedCoincidents) return true;
+        }
     }
 
     const p1 = drawing[drawing.length - 2];
@@ -134,6 +148,7 @@ function linesIntersect(p1, p2, p3, p4, draw) {
 function drawShapes() {
     requestAnimationFrame(drawShapes);
     context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#00000010";
 
     if (drawing !== null) {
         context.strokeStyle = drawingColor;
@@ -143,6 +158,7 @@ function drawShapes() {
             context.lineTo(p.x, p.y);
         }
         context.stroke();
+        context.fill();
     }
 
     for (const shape of shapes) {
@@ -160,6 +176,7 @@ function drawShapes() {
                 context.lineTo(shape[0].x, shape[0].y);
             }
             context.stroke();
+            context.fill();
         }
     }
 }
@@ -198,13 +215,13 @@ async function rotateShape(shape, angle, center) {
         let currentAngle = 0;
 
         function increment() {
-            if (currentAngle >= angle) {
+            if (Math.abs(currentAngle) >= Math.abs(angle)) {
                 rotateShapeInstant(shape, angle - currentAngle, center);
                 res();
             }
             else {
-                rotateShapeInstant(shape, Math.PI / 180, center);
-                currentAngle += Math.PI / 180;
+                rotateShapeInstant(shape, Math.PI / 180 * Math.sign(angle), center);
+                currentAngle += Math.PI / 180 * Math.sign(angle);
                 setTimeout(increment, 0);
             }
         }
@@ -467,69 +484,100 @@ async function rectangleToSquare(shapeIndex) {
     ]);
 }
 
+async function combineTwoSquares(i, j, x, y) {
+    const square1 = shapes[i];
+    const square2 = shapes[j];
+    const side1 = distance(square1[0], square1[1]);
+    const side2 = distance(square2[0], square2[1]);
+    const sideMean = (side1 + side2) / 2;
+
+    let bl1 = axisAlignedSquareCorner(square1, "BL");
+    let bl2 = axisAlignedSquareCorner(square2, "BL");
+    let tl1 = axisAlignedSquareCorner(square1, "TL");
+    let tl2 = axisAlignedSquareCorner(square2, "TL");
+    let br1 = axisAlignedSquareCorner(square1, "BR");
+    let br2 = axisAlignedSquareCorner(square2, "BR");
+    let tr1 = axisAlignedSquareCorner(square1, "TR");
+    let tr2 = axisAlignedSquareCorner(square2, "TR");
+
+    await pause(1000);
+    await Promise.all([
+        translateShape(square1, x - sideMean - bl1.x, y + sideMean  - bl1.y),
+        translateShape(square2, x - sideMean + side1 - bl2.x, y + sideMean - bl2.y),
+    ]);
+
+    bl1 = axisAlignedSquareCorner(square1, "BL");
+    bl2 = axisAlignedSquareCorner(square2, "BL");
+    tl1 = axisAlignedSquareCorner(square1, "TL");
+    tl2 = axisAlignedSquareCorner(square2, "TL");
+    br1 = axisAlignedSquareCorner(square1, "BR");
+    br2 = axisAlignedSquareCorner(square2, "BR");
+    tr1 = axisAlignedSquareCorner(square1, "TR");
+    tr2 = axisAlignedSquareCorner(square2, "TR");
+
+    const a = {
+        x: bl1.x + side2,
+        y: br1.y,
+    };
+
+    const shape1 = [tl1, a, bl1];
+    const shape2 = [tr2, a, br2];
+    const shape3 = [tl1, a, tr2, tl2, tr1];
+
+    await pause(1000);
+
+    shapes[i] = null;
+    shapes[j] = null;
+
+    const k = shapes.push(shape1, shape2, shape3) - 1;
+
+    await pause(1000);
+
+    await Promise.all([
+        rotateShape(shape1, Math.PI * 3 / 2, tl1),
+        rotateShape(shape2, Math.PI / 2, tr2),
+    ]);
+
+    shapes[k - 0] = null;
+    shapes[k - 1] = null;
+    shapes[k - 2] = null;
+    const l = shapes.push([
+        shape1[0],
+        shape1[1],
+        shape2[0],
+        a,
+    ]) - 1;
+
+    await pause(1000);
+    await rotateShape(shapes[l], shapeReturnRotation(shapes[l]), polygonCenter(shapes[l]));
+}
+
 async function combineSquares() {
     await pause(1000);
-    await Promise.all(shapes.map(s => rotateShape(s, Math.PI * 2 - Math.atan2(s[0].y - s[1].y, s[0].x - s[1].x), polygonCenter(s))));
+    await Promise.all(shapes.map(s => rotateShape(s, shapeReturnRotation(s), polygonCenter(s))));
 
     while (shapes.length > 1) {
-        const square1 = shapes[0];
-        const square2 = shapes[1];
-        const side1 = distance(square1[0], square1[1]);
-        const side2 = distance(square2[0], square2[1]);
-        const sideMean = (side1 + side2) / 2;
+        const radii = [];
 
-        let bl1 = axisAlignedSquareCorner(square1, "BL");
-        let bl2 = axisAlignedSquareCorner(square2, "BL");
-        let tl1 = axisAlignedSquareCorner(square1, "TL");
-        let tl2 = axisAlignedSquareCorner(square2, "TL");
-        let br1 = axisAlignedSquareCorner(square1, "BR");
-        let br2 = axisAlignedSquareCorner(square2, "BR");
-        let tr1 = axisAlignedSquareCorner(square1, "TR");
-        let tr2 = axisAlignedSquareCorner(square2, "TR");
+        for (let i = 1; i < shapes.length; i += 2) {
+            radii.push(combinedSquareRadius(shapes[i - 1], shapes[i]));
+        }
 
+        const points = getCombinationPoints(radii);
+        const promises = [];
 
-        await pause(1000);
-        await Promise.all([
-            translateShape(square1, canvas.width / 2 - sideMean - bl1.x, canvas.height / 2 + sideMean  - bl1.y),
-            translateShape(square2, canvas.width / 2 - sideMean + side1 - bl2.x, canvas.height / 2 + sideMean - bl2.y),
-        ]);
+        if (points.length == 1) {
+            points[0] = { x: canvas.width / 2, y: canvas.height / 2  };
+        }
 
-        bl1 = axisAlignedSquareCorner(square1, "BL");
-        bl2 = axisAlignedSquareCorner(square2, "BL");
-        tl1 = axisAlignedSquareCorner(square1, "TL");
-        tl2 = axisAlignedSquareCorner(square2, "TL");
-        br1 = axisAlignedSquareCorner(square1, "BR");
-        br2 = axisAlignedSquareCorner(square2, "BR");
-        tr1 = axisAlignedSquareCorner(square1, "TR");
-        tr2 = axisAlignedSquareCorner(square2, "TR");
+        for (let i = 1; i < shapes.length; i += 2) {
+            const j = i / 2 | 0;
+            promises.push(combineTwoSquares(i - 1, i, points[j].x, points[j].y));
+        }
 
-        const a = {
-            x: bl1.x + side2,
-            y: br1.y,
-        };
+        await Promise.all(promises);
 
-        const shape1 = [tl1, a, bl1];
-        const shape2 = [tr2, a, br2];
-        const shape3 = [tl1, a, tr2, tl2, tr1];
-
-        await pause(1000);
-        shapes.splice(0, 2, shape1, shape2, shape3);
-
-        await pause(1000);
-        await Promise.all([
-            rotateShape(shape1, Math.PI * 3 / 2, tl1),
-            rotateShape(shape2, Math.PI / 2, tr2),
-        ]);
-
-        shapes.splice(0, 3, [
-            shape1[0],
-            shape1[1],
-            shape2[0],
-            a,
-        ]);
-
-        await pause(1000);
-        await rotateShape(shapes[0], Math.PI * 2 - Math.atan2(shapes[0][0].y - shapes[0][1].y, shapes[0][0].x - shapes[0][1].x), polygonCenter(shapes[0]));
+        shapes.splice(0, shapes.length, ...shapes.filter(e => e));
     }
 }
 
@@ -542,6 +590,12 @@ function midpoint(p1, p2) {
 
 function distance(p1, p2) {
     return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+}
+
+function distanceSq(p1, p2) {
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    return dx * dx + dy * dy;
 }
 
 function angle(p1, p2, p3) {
@@ -594,8 +648,8 @@ function polygonCenter(polygon) {
 }
 
 function axisAlignedSquareCorner(square, type) {
-    let xFunc = type[1] === "R" ? Math.max : Math.min;
-    let yFunc = type[0] === "B" ? Math.max : Math.min;
+    const xFunc = type[1] === "R" ? Math.max : Math.min;
+    const yFunc = type[0] === "B" ? Math.max : Math.min;
 
     return {
         x: xFunc(...square.map(p => p.x)),
@@ -603,10 +657,33 @@ function axisAlignedSquareCorner(square, type) {
     };
 }
 
+function randRange(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function shapeReturnRotation(shape) {
+    return smallestReturnRotation(Math.atan2(shape[0].y - shape[1].y, shape[0].x - shape[1].x));
+}
+
+function smallestReturnRotation(angle) {
+    angle %= Math.PI / 2;
+    return Math.PI / 2 - angle;
+    if (angle < Math.PI / 4) return -angle;
+    else return Math.PI / 2 - angle;
+}
+
+function combinedSquareRadius(a, b) {
+    const daSq = distanceSq(a[0], a[2]);
+    const dbSq = distanceSq(b[0], b[2]);
+    const cArea = (daSq + dbSq) / 2;
+
+    return Math.sqrt(cArea) * Math.SQRT2 / 2;
+}
+
+function getCombinationPoints(radii) {
+    return radii.map(r => ({ x: randRange(r, canvas.width - r), y: randRange(r, canvas.height - r) }));
+}
+
 function mod(n, m) {
     return (n % m + m) % m;
 }
-
-drawShapes();
-
-})();
