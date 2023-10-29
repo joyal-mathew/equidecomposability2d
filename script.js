@@ -14,47 +14,36 @@ let drawing = null;
 let locked = 0;
 let drawingColor = "black";
 let animation = false;
+
 addEventListener("mousedown", e => {
     if (animation) return;
+    const mouse = { x: e.clientX, y: e.clientY };
     shapes.splice(0, shapes.length);
 
     if (e.button === 0) {
         if (drawing === null) {
-            drawing = [ { x: e.clientX, y: e.clientY } ];
+            drawing = [mouse];
             locked = 1;
         }
         else {
-            if (!selfIntersects()) {
-                drawing.push({ x: e.clientX, y: e.clientY });
+            if (isClosing(mouse)) {
+                drawing.pop();
+                attemptSolve();
+            }
+            else if (!selfIntersects()) {
+                drawing.push(mouse);
                 locked += 1;
             }
         }
     }
     else if (e.button === 2 && drawing.length > 2) {
-        if (drawing !== null && drawingColor !== "red") {
-            drawing.push(drawing[0]);
-            if (!selfIntersects(true)) {
+        if (drawing !== null) {
+            if (isClosing(mouse)) {
                 drawing.pop();
-                shapes.push(drawing);
-                drawing = null;
-                animation = true;
-                cutPolygon().then(() => {
-                    shapes.splice(0, shapes.length, ...shapes.filter(e => e));
-                    Promise.all(shapes.map((_, i) => triangleToParallelogram(i)
-                        .then(i => parallelogramToRectangle(i))
-                        .then(i => rectangleToSquare(i))))
-                    .then(() => {
-                        shapes.splice(0, shapes.length, ...shapes.filter(e => e));
-                        return combineSquares();
-                    })
-                    .then(() => {
-                        animation = false;
-                        shapes.splice(0, shapes.length, ...shapes.filter(e => e));
-                    });
-                });
+                attemptSolve();
             }
-            else {
-                drawing.pop();
+            else if (!selfIntersects()) {
+                attemptSolve();
             }
         }
     }
@@ -62,18 +51,57 @@ addEventListener("mousedown", e => {
 
 addEventListener("mousemove", e => {
     if (drawing !== null) {
+        const mouse = { x: e.clientX, y: e.clientY };
+
         if (drawing.length === locked) {
-            drawing.push({ x: e.clientX, y: e.clientY });
+            drawing.push(mouse);
         }
         else {
-            drawing[locked] = { x: e.clientX, y: e.clientY };
+            drawing[locked] = mouse;
         }
 
-        drawingColor = selfIntersects() ? "red" : "black";
+        if (isClosing(mouse)) {
+            drawing[locked] = drawing[0];
+            drawingColor = "green";
+        }
+        else {
+            drawingColor = selfIntersects() ? "red" : "black";
+        }
     }
 });
 
 requestAnimationFrame(drawShapes);
+
+function isClosing(mouse) {
+    return locked > 2 && distance(mouse, drawing[0]) <= POINT_COINDICENT_TOLERENCE
+}
+
+function attemptSolve() {
+    drawing.push(drawing[0]);
+    if (!selfIntersects(true)) {
+        drawing.pop();
+        shapes.push(drawing);
+        drawing = null;
+        animation = true;
+        cutPolygon().then(() => {
+            shapes.splice(0, shapes.length, ...shapes.filter(e => e));
+            Promise.all(shapes.map((_, i) => triangleToParallelogram(i)
+                                   .then(i => parallelogramToRectangle(i))
+                                   .then(i => rectangleToSquare(i))))
+                .then(() => {
+                    shapes.splice(0, shapes.length, ...shapes.filter(e => e));
+                    return combineSquares();
+                })
+                .then(() => {
+                    animation = false;
+                    shapes.splice(0, shapes.length, ...shapes.filter(e => e));
+                });
+        });
+    }
+    else {
+        drawing.pop();
+    }
+}
 
 function selfIntersects(allowedCoincidents) {
     allowedCoincidents = allowedCoincidents || 0;
@@ -86,7 +114,7 @@ function selfIntersects(allowedCoincidents) {
 
     for (let i = 0; i < drawing.length; ++i) {
         for (let j = i + 1; j < drawing.length; ++j) {
-            if (distanceSq(drawing[i], drawing[j]) < 10) foundCoincidents += 1;
+            if (distanceSq(drawing[i], drawing[j]) <= POINT_COINDICENT_TOLERENCE) foundCoincidents += 1;
             if (foundCoincidents > allowedCoincidents) return true;
         }
     }
@@ -566,7 +594,7 @@ async function combineSquares() {
         const points = getCombinationPoints(radii);
         const promises = [];
 
-        if (points.length == 1) {
+        if (points.length === 1) {
             points[0] = { x: canvas.width / 2, y: canvas.height / 2  };
         }
 
